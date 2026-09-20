@@ -94,6 +94,14 @@ test('external API URLs require public HTTPS addresses', () => {
   assert.throws(() => core.normalizeHttpMethod('TRACE'), /не поддерживается/);
 });
 
+test('browser checks allow localhost but keep remote pages on public HTTPS', () => {
+  assert.equal(core.validateBrowserUrl('http://localhost:3000/').hostname, 'localhost');
+  assert.equal(core.validateBrowserUrl('http://127.0.0.1:8080/').port, '8080');
+  assert.equal(core.validateBrowserUrl('https://example.com/docs').hostname, 'example.com');
+  assert.throws(() => core.validateBrowserUrl('http://example.com'), /HTTPS/);
+  assert.throws(() => core.validateBrowserUrl('https://192.168.1.10'), /локальной сети/);
+});
+
 test('history compaction keeps newest context inside request budget', () => {
   const history = Array.from({ length: 12 }, (_, index) => ({
     role: index % 2 ? 'assistant' : 'user', content: `${index}:` + 'x'.repeat(10_000)

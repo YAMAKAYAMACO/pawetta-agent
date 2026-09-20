@@ -283,6 +283,21 @@ function validateExternalUrl(value) {
   return url;
 }
 
+function validateBrowserUrl(value) {
+  let url;
+  try { url = new URL(String(value || '')); } catch { throw new Error('Некорректный адрес страницы.'); }
+  if (url.username || url.password) throw new Error('Логин и пароль нельзя передавать внутри URL.');
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const loopback = host === 'localhost' || host === '::1' || /^127\./.test(host);
+  if (loopback) {
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Локальную страницу можно проверять только по HTTP или HTTPS.');
+    return url;
+  }
+  if (url.protocol !== 'https:') throw new Error('Внешние страницы можно проверять только по HTTPS.');
+  if (isPrivateAddress(host)) throw new Error('Адреса в локальной сети запрещены.');
+  return url;
+}
+
 function normalizeHttpMethod(value) {
   const method = String(value || 'GET').trim().toUpperCase();
   if (!['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) throw new Error('Этот HTTP-метод не поддерживается.');
@@ -359,6 +374,7 @@ module.exports = {
   commandIsBlocked,
   isPrivateAddress,
   validateExternalUrl,
+  validateBrowserUrl,
   normalizeHttpMethod,
   compactHistory,
   compactPrompt,

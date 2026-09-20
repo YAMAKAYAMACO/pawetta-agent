@@ -30,6 +30,10 @@
   let currentCheckpointId = '';
   let currentRunChanged = false;
   let currentRunVerified = false;
+  let currentRunFiles = new Set();
+  let currentRunChecks = [];
+  let currentRunPages = [];
+  let currentSummaryShown = false;
 
   function showToast(text) {
     clearTimeout(toastTimer);
@@ -124,7 +128,7 @@
     login_success: 'Выполнен вход', login_cancelled: 'Вход отменён', logout: 'Выполнен выход', activity_cleared: 'Журнал очищен', agent_step: 'Шаг агента',
     project_indexed: 'Обновлён индекс проекта', checkpoint_created: 'Создана контрольная точка', checkpoint_rolled_back: 'Задача откачена',
     external_api_request: 'Выполнен запрос к API', external_url_opened: 'Открыт внешний сайт', project_path_opened: 'Открыт путь проекта',
-    clipboard_written: 'Текст скопирован', application_launched: 'Запущено приложение'
+    clipboard_written: 'Текст скопирован', application_launched: 'Запущено приложение', browser_checked: 'Проверена страница'
   };
 
   async function renderActivity() {
@@ -406,6 +410,100 @@
     scrollBottom();
   }
 
+  function addTaskSummary(message, metrics, checkpointId) {
+    currentSummaryShown = true;
+    const card = document.createElement('section');
+    card.className = 'task-summary';
+    const head = document.createElement('div');
+    head.className = 'task-summary-head';
+    const title = document.createElement('span');
+    title.textContent = 'Итог задачи';
+    const cost = document.createElement('small');
+    cost.textContent = formatCost(metrics?.rub || 0);
+    head.append(title, cost);
+    card.append(head);
+
+    const summary = document.createElement('p');
+    summary.textContent = message || 'Задача завершена.';
+    card.append(summary);
+
+    const facts = document.createElement('div');
+    facts.className = 'task-summary-facts';
+    [
+      ['Файлы', currentRunFiles.size],
+      ['Проверки', currentRunChecks.length],
+      ['Страницы', currentRunPages.length]
+    ].forEach(([label, value]) => {
+      const fact = document.createElement('span');
+      fact.textContent = `${label}: ${value}`;
+      facts.append(fact);
+    });
+    card.append(facts);
+
+    if (currentRunFiles.size) {
+      const block = document.createElement('div');
+      block.className = 'task-summary-block';
+      const label = document.createElement('span');
+      label.textContent = 'Изменённые файлы';
+      const list = document.createElement('p');
+      list.textContent = [...currentRunFiles].join(' · ');
+      block.append(label, list);
+      card.append(block);
+    }
+    if (currentRunChecks.length || currentRunPages.length) {
+      const block = document.createElement('div');
+      block.className = 'task-summary-block';
+      const label = document.createElement('span');
+      label.textContent = 'Проверка';
+      const list = document.createElement('p');
+      const checks = currentRunChecks.map(item => `${item.ok ? '✓' : '✗'} ${item.label}`);
+      const pages = currentRunPages.map(item => `${item.ok ? '✓' : '✗'} ${item.label}`);
+      list.textContent = [...checks, ...pages].join(' · ');
+      block.append(label, list);
+      card.append(block);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'task-summary-actions';
+    if (currentRunFiles.size) {
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.textContent = currentRunFiles.size === 1 ? 'Открыть файл' : 'Открыть папку';
+      open.addEventListener('click', () => bridge.openPath(currentRunFiles.size === 1 ? [...currentRunFiles][0] : '.').catch(error => showToast(error.message || 'Не удалось открыть')));
+      actions.append(open);
+    }
+    if (checkpointId && currentRunFiles.size) {
+      const rollback = document.createElement('button');
+      rollback.type = 'button';
+      rollback.textContent = 'Откатить';
+      rollback.addEventListener('click', async () => {
+        rollback.disabled = true;
+        try {
+          const result = await bridge.rollbackCheckpoint(checkpointId);
+          rollback.textContent = 'Откачено';
+          showToast(`Восстановлено файлов: ${result.restored}`);
+        } catch (error) {
+          rollback.disabled = false;
+          showToast(error.message || 'Не удалось откатить задачу');
+        }
+      }, { once: true });
+      actions.append(rollback);
+    }
+    const continueButton = document.createElement('button');
+    continueButton.type = 'button';
+    continueButton.textContent = 'Продолжить';
+    continueButton.addEventListener('click', () => {
+      prompt.value = 'Продолжи эту задачу: проверь результат и сделай следующее необходимое улучшение.';
+      resizePrompt();
+      updateSend();
+      prompt.focus();
+    });
+    actions.append(continueButton);
+    card.append(actions);
+    messages.append(card);
+    scrollBottom();
+  }
+
   function setThinking(show, label = 'Агент думает') {
     document.getElementById('thinking')?.remove();
     if (!show) return;
@@ -459,6 +557,7 @@
 - {"type":"edit_file","path":"относительный/путь","oldText":"точный существующий фрагмент","newText":"замена","reason":"зачем"}
 - {"type":"run_command","command":"команда PowerShell","reason":"зачем"}
 - {"type":"http_request","method":"GET|POST|PUT|PATCH|DELETE","url":"https://...","headers":{},"body":"","reason":"зачем"}
+- {"type":"browser_check","url":"http://localhost:3000 или https://...","reason":"что проверить"}
 - {"type":"open_url","url":"https://...","reason":"зачем"}
 - {"type":"open_path","path":"относительный/путь","reason":"зачем"}
 - {"type":"clipboard_write","text":"текст","reason":"зачем"}
@@ -486,6 +585,8 @@
 15. Внешние API, открытие программ, ссылок, файлов и запись в буфер выполняй только когда это нужно для задачи: приложение отдельно запросит подтверждение.
 16. Никогда не отправляй содержимое локальных файлов во внешний API, если пользователь прямо не попросил передать именно эти данные.
 17. Не запрашивай локальные адреса, HTTP без шифрования, системные настройки, пароли и токены. Секреты не повторяй в message.
+18. Для веб-задач после запуска локального сайта используй browser_check: проверь загрузку, текст, ошибки консоли и ресурсов.
+19. Независимые чтения, поиски и осмотры папок возвращай одним набором actions — приложение выполнит их параллельно.
 
 ПРОЕКТ: ${project.name}
 ИНДЕКС ПРОЕКТА${tree.truncated ? ' (частичный)' : ''}:
@@ -576,12 +677,13 @@ ${task}`;
     } else {
       const labels = {
         http_request: 'Отправить запрос к API', open_url: 'Открыть сайт', open_path: 'Открыть на компьютере',
-        clipboard_write: 'Записать в буфер обмена', launch_app: 'Запустить приложение'
+        clipboard_write: 'Записать в буфер обмена', launch_app: 'Запустить приложение', browser_check: 'Проверить страницу'
       };
       title.textContent = labels[action.type] || 'Выполнить внешнее действие';
       note.textContent = action.reason || 'Действие будет выполнено на этом компьютере';
       const pre = document.createElement('pre');
       if (action.type === 'http_request') pre.textContent = `${String(action.method || 'GET').toUpperCase()} ${action.url || ''}${action.body ? `\n\n${String(action.body).slice(0, 4000)}` : ''}`;
+      else if (action.type === 'browser_check') pre.textContent = action.url || '';
       else if (action.type === 'open_url') pre.textContent = action.url || '';
       else if (action.type === 'open_path') pre.textContent = action.path || '.';
       else if (action.type === 'clipboard_write') pre.textContent = String(action.text || '').slice(0, 4000);
@@ -646,7 +748,7 @@ ${task}`;
       if (!allowed) return { ok: false, type, path: action.path, error: 'Пользователь отклонил изменение.' };
       const result = await bridge.writeFile({ path: action.path, content: action.content, checkpointId: currentCheckpointId });
       addStep(result.changed ? 'Файл записан' : 'Файл уже актуален', result.path);
-      if (result.changed) { currentRunChanged = true; addUndo(result); }
+      if (result.changed) { currentRunChanged = true; currentRunFiles.add(result.path); addUndo(result); }
       return { ok: true, type, ...result };
     }
     if (type === 'edit_file') {
@@ -654,7 +756,7 @@ ${task}`;
       if (!allowed) return { ok: false, type, path: action.path, error: 'Пользователь отклонил изменение.' };
       const result = await bridge.editFile({ path: action.path, oldText: action.oldText, newText: action.newText, replaceAll: action.replaceAll, checkpointId: currentCheckpointId });
       addStep(result.changed ? 'Точечная правка применена' : 'Файл уже актуален', result.path);
-      if (result.changed) { currentRunChanged = true; addUndo(result); }
+      if (result.changed) { currentRunChanged = true; currentRunFiles.add(result.path); addUndo(result); }
       return { ok: true, type, ...result };
     }
     if (type === 'run_command') {
@@ -663,6 +765,7 @@ ${task}`;
       addStep('Выполняю команду', action.command);
       const result = await bridge.runCommand({ command: action.command });
       currentRunVerified = true;
+      currentRunChecks.push({ ok: result.code === 0, label: `${action.command} (код ${result.code})` });
       addStep(result.code === 0 ? 'Команда завершена' : 'Команда вернула ошибку', `код ${result.code}`);
       return { ok: result.code === 0, type, command: action.command, ...result };
     }
@@ -671,6 +774,17 @@ ${task}`;
       if (!allowed) return { ok: false, type, error: 'Пользователь отклонил запрос к API.' };
       addStep('Обращаюсь к API', action.url);
       return { ok: true, type, ...(await bridge.httpRequest({ method: action.method, url: action.url, headers: action.headers, body: action.body })) };
+    }
+    if (type === 'browser_check') {
+      const allowed = await requestApproval(action);
+      if (!allowed) return { ok: false, type, error: 'Пользователь отклонил проверку страницы.' };
+      addStep('Проверяю страницу', action.url);
+      const result = await bridge.browserCheck({ url: action.url, timeoutMs: action.timeoutMs });
+      const consoleErrors = Array.isArray(result.consoleMessages) ? result.consoleMessages.length : 0;
+      const loadErrors = Array.isArray(result.loadErrors) ? result.loadErrors.length : 0;
+      currentRunPages.push({ ok: !!result.ok && !consoleErrors && !loadErrors, label: `${result.page?.title || action.url} · ${result.loadMs} мс${consoleErrors + loadErrors ? ` · ошибок ${consoleErrors + loadErrors}` : ''}` });
+      currentRunVerified = true;
+      return { ok: !!result.ok, type, ...result };
     }
     if (type === 'open_url') {
       const allowed = await requestApproval(action);
@@ -699,6 +813,7 @@ ${task}`;
     const safeTypes = new Set(['read_file', 'read_many', 'search', 'list_directory', 'system_info']);
     const results = new Array(actions.length);
     const safe = actions.map((action, index) => ({ action, index })).filter(item => safeTypes.has(String(item.action?.type || '')));
+    if (safe.length > 1) addStep('Параллельно изучаю проект', `${safe.length} действий`);
     await Promise.all(safe.map(async item => {
       try { results[item.index] = await executeAction(item.action); }
       catch (error) { results[item.index] = { ok: false, type: item.action?.type || '', error: error.message || String(error) }; }
@@ -726,6 +841,10 @@ ${task}`;
     try {
       currentRunChanged = false;
       currentRunVerified = false;
+      currentRunFiles = new Set();
+      currentRunChecks = [];
+      currentRunPages = [];
+      currentSummaryShown = false;
       currentCheckpointId = (await bridge.createCheckpoint()).id;
       setThinking(true, 'Индексирую проект');
       const projectIndex = await bridge.index(false);
@@ -741,6 +860,7 @@ ${task}`;
         const plan = parseAgentAnswer(response.answer);
         if (!plan) {
           addMessage('assistant', response.answer || 'Модель вернула пустой ответ.', false, true, { rub: taskCostRub, label: 'Итого за задачу' });
+          addTaskSummary(response.answer || 'Модель вернула ответ без структурированного итога.', { rub: taskCostRub }, currentCheckpointId);
           rememberTurn(task, response.answer || 'Модель вернула пустой ответ.');
           return;
         }
@@ -763,6 +883,7 @@ ${task}`;
         }
         if (plan.done || !actions.length) {
           addMessage('assistant', plan.message || 'Готово.', false, true, { rub: taskCostRub, label: 'Итого за задачу' });
+          addTaskSummary(plan.message || 'Готово.', { rub: taskCostRub }, currentCheckpointId);
           rememberTurn(task, plan.message || 'Готово.');
           return;
         }
@@ -774,14 +895,20 @@ ${task}`;
       }
       const limitMessage = 'Я остановился после десяти шагов, чтобы не зациклиться. Можно продолжить этой же задачей.';
       addMessage('assistant', limitMessage, false, true, { rub: taskCostRub, label: 'Итого за задачу' });
+      addTaskSummary(limitMessage, { rub: taskCostRub }, currentCheckpointId);
       rememberTurn(task, limitMessage);
     } catch (error) {
       setThinking(false);
       if (error.message === 'Остановлено') { taskStatus = 'stopped'; addStep('Выполнение остановлено'); }
-      else { taskStatus = 'error'; addMessage('assistant', error.message || 'Не удалось выполнить задачу.', true, true, { rub: costKnown ? taskCostRub : 0, label: costKnown ? 'Итого за задачу' : 'Стоимость' }); }
+      else {
+        taskStatus = 'error';
+        const errorMessage = error.message || 'Не удалось выполнить задачу.';
+        addMessage('assistant', errorMessage, true, true, { rub: costKnown ? taskCostRub : 0, label: costKnown ? 'Итого за задачу' : 'Стоимость' });
+        addTaskSummary(errorMessage, { rub: costKnown ? taskCostRub : 0 }, currentCheckpointId);
+      }
     } finally {
       if (currentCheckpointId) {
-        if (currentRunChanged) addCheckpointUndo(currentCheckpointId);
+        if (currentRunChanged && !currentSummaryShown) addCheckpointUndo(currentCheckpointId);
         else bridge.discardCheckpoint(currentCheckpointId).catch(() => {});
       }
       currentCheckpointId = '';

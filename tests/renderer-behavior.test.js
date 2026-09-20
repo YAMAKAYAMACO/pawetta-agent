@@ -89,3 +89,15 @@ test('computer and API tools require explicit approval and stay constrained', ()
   assert.match(main, /applications = \{ notepad:/);
   assert.match(main, /readLimitedResponse/);
 });
+
+test('agent can inspect pages, parallelize research and render a task summary', () => {
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'preload.js'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(app, /"type":"browser_check"/);
+  assert.match(app, /Promise\.all\(safe\.map/);
+  assert.match(app, /addTaskSummary/);
+  assert.match(app, /Изменённые файлы/);
+  assert.match(preload, /agent:browser-check/);
+  assert.match(main, /async function browserCheck/);
+  assert.match(main, /console-message/);
+});

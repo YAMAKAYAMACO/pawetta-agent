@@ -340,6 +340,67 @@ async function externalApiRequest(request) {
   } finally { clearTimeout(timeout); }
 }
 
+async function browserCheck(request) {
+  const url = core.validateBrowserUrl(request?.url);
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const loopback = host === 'localhost' || host === '::1' || /^127\./.test(host);
+  if (!loopback) await ensurePublicHost(url.hostname);
+  const started = Date.now();
+  const consoleMessages = [];
+  const loadErrors = [];
+  const partition = `temp:pawetta-browser-check-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const window = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 800,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition }
+  });
+  window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    try {
+      const requested = new URL(details.url);
+      if (['data:', 'blob:', 'about:'].includes(requested.protocol)) return callback({ cancel: false });
+      if (!['http:', 'https:', 'ws:', 'wss:'].includes(requested.protocol)) return callback({ cancel: true });
+      const requestedHost = requested.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+      const requestedLoopback = requestedHost === 'localhost' || requestedHost === '::1' || /^127\./.test(requestedHost);
+      if (requestedLoopback && !loopback) return callback({ cancel: true });
+      if (!requestedLoopback && core.isPrivateAddress(requestedHost)) return callback({ cancel: true });
+      callback({ cancel: false });
+    } catch { callback({ cancel: true }); }
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level < 2 || consoleMessages.length >= 40) return;
+    consoleMessages.push({ level, message: String(message || '').slice(0, 600), line, source: String(sourceId || '').slice(0, 300) });
+  });
+  window.webContents.on('did-fail-load', (_event, code, description, failedUrl, isMainFrame) => {
+    if (loadErrors.length < 30) loadErrors.push({ code, description, url: failedUrl, mainFrame: !!isMainFrame });
+  });
+  const timeoutMs = Math.min(Math.max(Number(request?.timeoutMs) || 20_000, 3_000), 30_000);
+  let timer;
+  try {
+    await Promise.race([
+      window.loadURL(url.toString()),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Страница не загрузилась за отведённое время.')), timeoutMs); })
+    ]);
+    const page = await window.webContents.executeJavaScript(`(() => ({
+      title: document.title,
+      url: location.href,
+      text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 12000),
+      links: document.links?.length || 0,
+      forms: document.forms?.length || 0,
+      images: document.images?.length || 0,
+      viewport: { width: innerWidth, height: innerHeight },
+      documentSize: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight }
+    }))()`);
+    const result = { ok: !loadErrors.some(item => item.mainFrame), loadMs: Date.now() - started, page, consoleMessages, loadErrors };
+    await logActivity('browser_checked', { host: url.hostname, ok: result.ok, consoleErrors: consoleMessages.length, loadErrors: loadErrors.length });
+    return result;
+  } finally {
+    clearTimeout(timer);
+    if (!window.isDestroyed()) window.destroy();
+  }
+}
+
 ipcMain.handle('agent:select-project', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Выберите папку проекта',
@@ -427,6 +488,7 @@ ipcMain.handle('agent:read-many', async (_event, paths) => { await logActivity('
 ipcMain.handle('agent:search', async (_event, query) => { await logActivity('project_searched', { queryLength: String(query || '').length }); return core.searchProject(requireProject(), query); });
 ipcMain.handle('agent:system-info', async () => ({ platform: 'Windows', release: os.release(), arch: os.arch(), cpuCores: os.cpus().length, memoryGb: Math.round(os.totalmem() / 1073741824) }));
 ipcMain.handle('agent:http-request', async (_event, request) => externalApiRequest(request));
+ipcMain.handle('agent:browser-check', async (_event, request) => browserCheck(request));
 ipcMain.handle('agent:open-url', async (_event, value) => {
   const url = core.validateExternalUrl(value);
   await shell.openExternal(url.toString());

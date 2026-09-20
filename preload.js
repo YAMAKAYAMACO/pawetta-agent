@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('pawettaAgent', {
   search: query => ipcRenderer.invoke('agent:search', query),
   systemInfo: () => ipcRenderer.invoke('agent:system-info'),
   httpRequest: request => ipcRenderer.invoke('agent:http-request', request),
+  browserCheck: request => ipcRenderer.invoke('agent:browser-check', request),
   openUrl: url => ipcRenderer.invoke('agent:open-url', url),
   openPath: filePath => ipcRenderer.invoke('agent:open-path', filePath),
   writeClipboard: text => ipcRenderer.invoke('agent:clipboard-write', text),
