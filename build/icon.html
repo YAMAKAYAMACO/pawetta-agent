@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    *{box-sizing:border-box}html,body{width:512px;height:512px;margin:0;overflow:hidden;background:transparent}
+    body{display:grid;place-items:center}
+    .tile{position:relative;width:448px;height:448px;border-radius:128px;background:conic-gradient(from 18deg,#8275ee,#6bbce7,#f1d957,#ef8a79,#8275ee);box-shadow:0 28px 70px rgba(73,66,152,.25)}
+    .tile:before{content:"";position:absolute;inset:58px;border-radius:94px;background:#fff;box-shadow:inset 0 0 0 5px rgba(42,44,57,.08)}
+    .tile:after{content:"";position:absolute;inset:152px;border-radius:50%;background:#262734;box-shadow:0 14px 35px rgba(32,33,45,.22)}
+    .spark{position:absolute;z-index:2;width:38px;height:38px;right:64px;top:68px;transform:rotate(45deg);border-radius:8px;background:#fff;box-shadow:0 0 26px rgba(255,255,255,.9)}
+  </style>
+</head>
+<body><div class="tile"><span class="spark"></span></div></body>
+</html>

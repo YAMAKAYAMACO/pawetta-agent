@@ -1,0 +1,14 @@
+node_modules/
+dist/
+qa-*.png
+*.log
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+certs/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https:; connect-src 'none'">
+  <title>Паветта Агент</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="titlebar" aria-hidden="true"></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-orb"><i></i></span>
+        <span><b>Паветта</b><small>Агент для Windows</small></span>
+      </div>
+
+      <button class="new-task" id="newTask" type="button">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        Новая задача
+      </button>
+
+      <div class="sidebar-label">Проект</div>
+      <button class="project-card" id="selectProject" type="button">
+        <span class="folder-icon"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></svg></span>
+        <span><b id="projectName">Выбрать папку</b><small id="projectPath">Агент работает только внутри неё</small></span>
+        <svg class="project-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+
+      <div class="sidebar-label recent-label">История задач</div>
+      <div class="recent" id="recent"></div>
+
+      <div class="sidebar-foot">
+        <button class="sidebar-account" id="accountButton" type="button">
+          <span class="sidebar-account-avatar"><img id="accountAvatar" alt="" hidden><svg id="accountAvatarFallback" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19c.7-3.4 3-5.2 6.5-5.2s5.8 1.8 6.5 5.2"/></svg></span>
+          <span><b id="accountName">Войти</b><small id="accountBalance">Синхронизация и баланс</small></span>
+          <svg class="account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+        <div class="local-status"><span class="local-dot"></span><small>Файлы и журнал остаются на компьютере</small></div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-head">
+        <div class="model-chip">
+          <span class="model-icon"><img src="pawetta.svg" alt=""></span>
+          <span><b>Паветта Auto</b><small>подбирает модель под задачу</small></span>
+        </div>
+        <div class="head-status"><span></span> Агент на компьютере</div>
+      </header>
+
+      <section class="conversation" id="conversation" aria-live="polite">
+        <div class="welcome" id="welcome">
+          <div class="hero-orb"><i></i><i></i><i></i><svg viewBox="0 0 48 48"><path d="M24 8.5 27 20l11.5 3.5L27 27 24 39l-3.5-12L9 23.5 20.5 20 24 8.5Z"/></svg></div>
+          <h1>Что сделаем в проекте?</h1>
+          <p>Выберите папку — агент сможет изучить код, предложить изменения и запустить проверку.</p>
+          <div class="starter-grid">
+            <button type="button" data-prompt="Изучи структуру проекта и коротко объясни, как он устроен."><b>Разобраться в проекте</b><span>Пройтись по структуре и ключевым файлам</span></button>
+            <button type="button" data-prompt="Найди потенциальные ошибки в проекте и предложи безопасные исправления."><b>Найти ошибки</b><span>Проверить код и предложить исправления</span></button>
+            <button type="button" data-prompt="Найди инструкции по запуску проекта и проверь, что основные тесты проходят."><b>Запустить проверку</b><span>Найти команды и выполнить их с разрешения</span></button>
+            <button type="button" data-prompt="Посмотри проект и предложи одно полезное небольшое улучшение."><b>Улучшить проект</b><span>Небольшое изменение с понятным результатом</span></button>
+          </div>
+        </div>
+        <div class="messages" id="messages"></div>
+      </section>
+
+      <footer class="composer-wrap">
+        <form class="composer" id="composer">
+          <textarea id="prompt" rows="1" placeholder="Попросите изменить код, найти ошибку или запустить проверку…" aria-label="Задача для агента"></textarea>
+          <div class="composer-bottom">
+            <div class="scope" id="scope"><span></span> Папка не выбрана</div>
+            <button class="send" id="send" type="submit" aria-label="Отправить" disabled>
+              <svg viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v12"/></svg>
+            </button>
+            <button class="stop" id="stop" type="button" aria-label="Остановить" hidden><span></span></button>
+          </div>
+        </form>
+        <p>Агент показывает запись файлов и команды до выполнения.</p>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="account-dialog" id="accountDialog">
+    <header class="account-dialog-head">
+      <div><h2>Аккаунт и приложение</h2><p id="accountSubtitle">Данные Паветты и локального агента</p></div>
+      <button id="closeAccount" type="button" aria-label="Закрыть">×</button>
+    </header>
+    <div class="account-guest" id="accountGuest">
+      <span class="account-guest-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19c.7-3.4 3-5.2 6.5-5.2s5.8 1.8 6.5 5.2"/></svg></span>
+      <div><b>Войдите через Яндекс</b><p>Баланс и расходы будут общими с сайтом Паветты.</p></div>
+      <button id="loginAccount" type="button">Войти</button>
+    </div>
+    <section class="account-profile" id="accountProfile" hidden>
+      <div class="account-person"><span class="account-photo"><img id="dialogAvatar" alt="" hidden><svg id="dialogAvatarFallback" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19c.7-3.4 3-5.2 6.5-5.2s5.8 1.8 6.5 5.2"/></svg></span><div><b id="dialogAccountName">Аккаунт</b><small id="dialogAccountEmail"></small></div></div>
+      <div class="balance-card"><span>Баланс Паветты</span><b id="dialogBalance">0 ₽</b><small>Списывается только стоимость запросов к моделям</small></div>
+      <div class="account-stats"><div><span>Запросов</span><b id="accountRequests">0</b></div><div><span>Потрачено</span><b id="accountSpent">0 ₽</b></div><div><span>Диалогов на сайте</span><b id="accountChats">0</b></div></div>
+    </section>
+    <section class="limits-card">
+      <div class="dialog-section-title"><span>Лимиты агента</span><small id="appVersion">Версия приложения</small></div>
+      <div class="limits-grid"><div><b id="limitSteps">10 шагов</b><span>на одну задачу</span></div><div><b id="limitTime">2 минуты</b><span>на ответ модели</span></div><div><b id="limitFile">300 КБ</b><span>на читаемый файл</span></div><div><b id="limitBatch">8 файлов</b><span>за одно чтение</span></div></div>
+    </section>
+    <section class="capabilities-card">
+      <div class="dialog-section-title"><span>Возможности агента</span><small>с подтверждением</small></div>
+      <div class="capability-list"><span>Файлы</span><span>PowerShell</span><span>HTTPS API</span><span>Сайты</span><span>Приложения</span></div>
+    </section>
+    <section class="preferences-card">
+      <div class="dialog-section-title"><span>Поведение приложения</span><small>Windows</small></div>
+      <label class="preference-row"><span><b>Запускать вместе с Windows</b><small>В фоне, без появления окна</small></span><input id="autoLaunchSetting" type="checkbox"><i></i></label>
+      <label class="preference-row"><span><b>Оставлять в трее при закрытии</b><small>Задачи продолжат выполняться</small></span><input id="closeToTraySetting" type="checkbox"><i></i></label>
+      <label class="preference-row"><span><b>Сообщать о завершении</b><small>Только когда окно не активно</small></span><input id="notifySetting" type="checkbox"><i></i></label>
+    </section>
+    <section class="update-card" id="updateCard">
+      <span class="update-icon">↻</span>
+      <span><b id="updateTitle">Проверяем обновления…</b><small id="updateText">Это займёт пару секунд</small></span>
+      <button id="downloadUpdate" type="button" hidden>Скачать</button>
+    </section>
+    <section class="activity-card">
+      <div class="dialog-section-title"><span>Журнал действий</span><button id="clearActivity" type="button">Очистить</button></div>
+      <div class="activity-list" id="activityList"><p>Загружаем журнал…</p></div>
+      <small class="activity-note">Содержимое запросов и файлов в журнал не записывается.</small>
+    </section>
+    <footer class="account-dialog-foot"><button id="refreshAccount" type="button">Обновить</button><button id="openWebAccount" type="button">Открыть на сайте</button><button class="logout" id="logoutAccount" type="button" hidden>Выйти</button></footer>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
